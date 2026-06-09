@@ -1,0 +1,83 @@
+database:
+  path: trading-bot.db
+
+web:
+  address: ":8080"
+  enabled: true
+
+market:
+  symbol: BTCUSDT
+  initial_price: 5000000000000
+  amplitude: 500000000000
+  period: 60s
+  frequency: 1s
+
+risk:
+  max_single_order_value: 1000000000
+  max_position_value: 50000000000
+  daily_loss_limit: 5000000000
+  circuit_breaker_pct: 0.05
+  disabled_symbols: []
+
+strategies:
+  - id: ma_001
+    name: MA Crossover
+    type: ma_crossover
+    symbol: BTCUSDT
+    enabled: true
+    params:
+      fast_period: 5
+      slow_period: 20
+
+  - id: rsi_001
+    name: RSI Strategy
+    type: rsi
+    symbol: BTCUSDT
+    enabled: false
+    params:
+      period: 14
+      overbought: 70
+      oversold: 30
+
+  - id: macd_001
+    name: MACD Strategy
+    type: macd
+    symbol: BTCUSDT
+    enabled: false
+    params:
+      fast_ema_period: 12
+      slow_ema_period: 26
+      signal_period: 9
+
+  - id: bollinger_001
+    name: Bollinger Bands
+    type: bollinger
+    symbol: BTCUSDT
+    enabled: false
+    params:
+      period: 20
+      std_dev_times: 2
+
+  - id: turtle_001
+    name: Turtle Trading
+    type: turtle
+    symbol: BTCUSDT
+    enabled: false
+    params:
+      entry_period: 20
+      exit_period: 10
+
+  - id: grid_001
+    name: Grid Trading
+    type: grid
+    symbol: BTCUSDT
+    enabled: false
+    params:
+      grid_count: 10
+      grid_spacing: 1.0
+      base_price: 5000000000000
+
+logging:
+  level: info
+  format: json
+  output: stdout

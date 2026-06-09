@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trading Bot Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background: #0f172a;
+            color: #e2e8f0;
+        }
+        .card {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 0.75rem;
+        }
+        .positive { color: #22c55e; }
+        .negative { color: #ef4444; }
+        .bid-row {
+            background: linear-gradient(to right, rgba(34, 197, 94, 0.15), transparent);
+        }
+        .ask-row {
+            background: linear-gradient(to right, rgba(239, 68, 68, 0.15), transparent);
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .status-running { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+        .status-stopped { background: #64748b; }
+        .glow-green { box-shadow: 0 0 20px rgba(34, 197, 94, 0.3); }
+        .glow-red { box-shadow: 0 0 20px rgba(239, 68, 68, 0.3); }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .animate-pulse-dot {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        .scrollbar-thin::-webkit-scrollbar {
+            width: 6px;
+        }
+        .scrollbar-thin::-webkit-scrollbar-track {
+            background: #1e293b;
+        }
+        .scrollbar-thin::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-6">
+    <div class="max-w-7xl mx-auto">
+        <header class="mb-6">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h1 class="text-2xl md:text-3xl font-bold text-white">Trading Bot Dashboard</h1>
+                    <p class="text-slate-400 text-sm mt-1">实时监控与策略管理</p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span id="ws-status" class="flex items-center gap-2 text-sm text-slate-400">
+                        <span class="status-dot status-stopped"></span>
+                        <span>连接中...</span>
+                    </span>
+                    <span id="current-time" class="text-sm text-slate-500"></span>
+                </div>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div class="card p-5">
+                <div class="text-slate-400 text-sm mb-1">账户权益</div>
+                <div id="equity" class="text-2xl font-bold text-white">--</div>
+                <div class="text-xs text-slate-500 mt-1">Equity (BTC)</div>
+            </div>
+            <div class="card p-5">
+                <div class="text-slate-400 text-sm mb-1">可用余额</div>
+                <div id="balance" class="text-2xl font-bold text-white">--</div>
+                <div class="text-xs text-slate-500 mt-1">Balance (BTC)</div>
+            </div>
+            <div class="card p-5">
+                <div class="text-slate-400 text-sm mb-1">今日盈亏</div>
+                <div id="daily-pnl" class="text-2xl font-bold">--</div>
+                <div class="text-xs text-slate-500 mt-1">Daily PnL</div>
+            </div>
+            <div class="card p-5">
+                <div class="text-slate-400 text-sm mb-1">当前价格</div>
+                <div id="current-price" class="text-2xl font-bold text-blue-400">--</div>
+                <div class="text-xs text-slate-500 mt-1">BTC/USDT</div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="lg:col-span-2 space-y-6">
+                <div class="card p-5">
+                    <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                        </svg>
+                        持仓信息
+                    </h2>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-slate-400 border-b border-slate-700">
+                                    <th class="text-left py-2 px-3">交易对</th>
+                                    <th class="text-right py-2 px-3">数量</th>
+                                    <th class="text-right py-2 px-3">均价</th>
+                                    <th class="text-right py-2 px-3">已实现盈亏</th>
+                                    <th class="text-right py-2 px-3">未实现盈亏</th>
+                                </tr>
+                            </thead>
+                            <tbody id="positions-body">
+                                <tr>
+                                    <td colspan="5" class="text-center py-8 text-slate-500">暂无持仓</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="card p-5">
+                    <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                        </svg>
+                        策略状态
+                    </h2>
+                    <div id="strategies-list" class="space-y-3">
+                        <div class="text-center py-4 text-slate-500">加载中...</div>
+                    </div>
+                </div>
+
+                <div class="card p-5">
+                    <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                        </svg>
+                        最新成交
+                    </h2>
+                    <div class="overflow-x-auto max-h-64 overflow-y-auto scrollbar-thin">
+                        <table class="w-full text-sm">
+                            <thead class="sticky top-0 bg-slate-800">
+                                <tr class="text-slate-400 border-b border-slate-700">
+                                    <th class="text-left py-2 px-3">时间</th>
+                                    <th class="text-left py-2 px-3">方向</th>
+                                    <th class="text-right py-2 px-3">价格</th>
+                                    <th class="text-right py-2 px-3">数量</th>
+                                    <th class="text-right py-2 px-3">手续费</th>
+                                </tr>
+                            </thead>
+                            <tbody id="trades-body">
+                                <tr>
+                                    <td colspan="5" class="text-center py-8 text-slate-500">暂无成交</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="space-y-6">
+                <div class="card p-5">
+                    <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/>
+                        </svg>
+                        订单簿深度
+                    </h2>
+                    <div class="space-y-1">
+                        <div class="text-xs text-slate-500 mb-2 flex justify-between">
+                            <span>卖盘 (Asks)</span>
+                            <span>数量</span>
+                        </div>
+                        <div id="asks-list" class="space-y-1 text-sm">
+                        </div>
+                        <div class="my-3 border-t border-b border-slate-700 py-2 text-center">
+                            <span id="spread-price" class="text-lg font-bold text-white">--</span>
+                            <span class="text-xs text-slate-500 ml-2" id="spread-info"></span>
+                        </div>
+                        <div id="bids-list" class="space-y-1 text-sm">
+                        </div>
+                        <div class="text-xs text-slate-500 mt-2 flex justify-between">
+                            <span>买盘 (Bids)</span>
+                            <span>数量</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card p-5">
+                    <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                        </svg>
+                        风险指标
+                    </h2>
+                    <div class="space-y-4">
+                        <div class="flex justify-between items-center">
+                            <span class="text-slate-400 text-sm">熔断状态</span>
+                            <span id="circuit-breaker" class="text-sm font-medium px-2 py-1 rounded bg-slate-700 text-slate-300">--</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-slate-400 text-sm">今日盈亏</span>
+                            <span id="risk-daily-pnl" class="text-sm font-medium">--</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-slate-400 text-sm">总敞口</span>
+                            <span id="total-exposure" class="text-sm font-medium text-white">--</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-slate-400 text-sm">引擎状态</span>
+                            <span id="engine-status" class="text-sm font-medium">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer class="mt-8 text-center text-slate-500 text-sm">
+            <p>Trading Bot Dashboard &copy; 2024 | 数据每秒更新</p>
+        </footer>
+    </div>
+
+    <script>
+        const SATOSHI_PER_BTC = 100000000;
+
+        function formatBTC(satoshis) {
+            if (satoshis === null || satoshis === undefined) return '--';
+            const btc = satoshis / SATOSHI_PER_BTC;
+            if (Math.abs(btc) >= 1) {
+                return btc.toFixed(4) + ' BTC';
+            } else if (Math.abs(btc) >= 0.001) {
+                return btc.toFixed(6) + ' BTC';
+            } else {
+                return btc.toFixed(8) + ' BTC';
+            }
+        }
+
+        function formatPrice(satoshis) {
+            if (satoshis === null || satoshis === undefined) return '--';
+            const price = satoshis / SATOSHI_PER_BTC;
+            return price.toFixed(2);
+        }
+
+        function formatQty(satoshis) {
+            if (satoshis === null || satoshis === undefined) return '--';
+            const qty = satoshis / SATOSHI_PER_BTC;
+            return qty.toFixed(6);
+        }
+
+        function formatPnL(satoshis) {
+            if (satoshis === null || satoshis === undefined) return '--';
+            const btc = satoshis / SATOSHI_PER_BTC;
+            const sign = satoshis >= 0 ? '+' : '';
+            return sign + btc.toFixed(6) + ' BTC';
+        }
+
+        function formatTime(timestamp) {
+            if (!timestamp) return '--';
+            const d = new Date(timestamp);
+            return d.toLocaleTimeString('zh-CN', { hour12: false });
+        }
+
+        function updateTime() {
+            const now = new Date();
+            document.getElementById('current-time').textContent = 
+                now.toLocaleString('zh-CN', { hour12: false });
+        }
+        setInterval(updateTime, 1000);
+        updateTime();
+
+        let ws;
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 10;
+
+        function connectWS() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = protocol + '//' + window.location.host + '/ws';
+            
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = function() {
+                reconnectAttempts = 0;
+                updateWSStatus(true);
+            };
+
+            ws.onmessage = function(event) {
+                try {
+                    const msg = JSON.parse(event.data);
+                    handleMessage(msg);
+                } catch (e) {
+                    console.error('Parse error:', e);
+                }
+            };
+
+            ws.onerror = function() {
+                updateWSStatus(false);
+            };
+
+            ws.onclose = function() {
+                updateWSStatus(false);
+                if (reconnectAttempts < maxReconnectAttempts) {
+                    reconnectAttempts++;
+                    const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
+                    setTimeout(connectWS, delay);
+                }
+            };
+        }
+
+        function updateWSStatus(connected) {
+            const statusEl = document.getElementById('ws-status');
+            if (connected) {
+                statusEl.innerHTML = '<span class="status-dot status-running animate-pulse-dot"></span><span class="text-green-400">已连接</span>';
+            } else {
+                statusEl.innerHTML = '<span class="status-dot status-stopped"></span><span class="text-slate-400">连接断开</span>';
+            }
+        }
+
+        function handleMessage(msg) {
+            switch (msg.type) {
+                case 'account':
+                    updateAccount(msg.data);
+                    break;
+                case 'position':
+                    updatePositions(msg.data);
+                    break;
+                case 'orderbook':
+                    updateOrderBook(msg.data);
+                    break;
+                case 'strategy':
+                    updateStrategies(msg.data);
+                    break;
+                case 'trade':
+                    updateTrades(msg.data);
+                    break;
+                case 'risk':
+                    updateRisk(msg.data);
+                    break;
+            }
+        }
+
+        function updateAccount(data) {
+            document.getElementById('equity').textContent = formatBTC(data.equity);
+            document.getElementById('balance').textContent = formatBTC(data.balance);
+            document.getElementById('current-price').textContent = formatPrice(data.price);
+        }
+
+        function updatePositions(positions) {
+            const tbody = document.getElementById('positions-body');
+            if (!positions || positions.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center py-8 text-slate-500">暂无持仓</td></tr>';
+                return;
+            }
+
+            let html = '';
+            positions.forEach(pos => {
+                const unrealizedClass = pos.unrealizedPnL >= 0 ? 'positive' : 'negative';
+                const realizedClass = pos.realizedPnL >= 0 ? 'positive' : 'negative';
+                html += `
+                    <tr class="border-b border-slate-700/50 hover:bg-slate-700/30">
+                        <td class="py-2 px-3 font-medium">${pos.symbol}</td>
+                        <td class="py-2 px-3 text-right">${formatQty(pos.quantity)}</td>
+                        <td class="py-2 px-3 text-right">${formatPrice(pos.avgPrice)}</td>
+                        <td class="py-2 px-3 text-right ${realizedClass}">${formatPnL(pos.realizedPnL)}</td>
+                        <td class="py-2 px-3 text-right ${unrealizedClass}">${formatPnL(pos.unrealizedPnL)}</td>
+                    </tr>
+                `;
+            });
+            tbody.innerHTML = html;
+        }
+
+        function updateOrderBook(ob) {
+            const asksList = document.getElementById('asks-list');
+            const bidsList = document.getElementById('bids-list');
+            const spreadPriceEl = document.getElementById('spread-price');
+            const spreadInfoEl = document.getElementById('spread-info');
+
+            let asksHtml = '';
+            if (ob.Asks && ob.Asks.length > 0) {
+                const maxAskQty = Math.max(...ob.Asks.map(a => a.Quantity));
+                for (let i = ob.Asks.length - 1; i >= 0; i--) {
+                    const ask = ob.Asks[i];
+                    const width = (ask.Quantity / maxAskQty) * 100;
+                    asksHtml += `
+                        <div class="ask-row flex justify-between items-center py-1 px-2 rounded relative overflow-hidden">
+                            <div class="absolute right-0 top-0 bottom-0 bg-red-500/10" style="width: ${width}%"></div>
+                            <span class="relative text-red-400 font-mono">${formatPrice(ask.Price)}</span>
+                            <span class="relative text-slate-300 font-mono">${formatQty(ask.Quantity)}</span>
+                        </div>
+                    `;
+                }
+            }
+            asksList.innerHTML = asksHtml;
+
+            let bidsHtml = '';
+            if (ob.Bids && ob.Bids.length > 0) {
+                const maxBidQty = Math.max(...ob.Bids.map(b => b.Quantity));
+                ob.Bids.forEach(bid => {
+                    const width = (bid.Quantity / maxBidQty) * 100;
+                    bidsHtml += `
+                        <div class="bid-row flex justify-between items-center py-1 px-2 rounded relative overflow-hidden">
+                            <div class="absolute left-0 top-0 bottom-0 bg-green-500/10" style="width: ${width}%"></div>
+                            <span class="relative text-green-400 font-mono">${formatPrice(bid.Price)}</span>
+                            <span class="relative text-slate-300 font-mono">${formatQty(bid.Quantity)}</span>
+                        </div>
+                    `;
+                });
+            }
+            bidsList.innerHTML = bidsHtml;
+
+            if (ob.Bids && ob.Asks && ob.Bids.length > 0 && ob.Asks.length > 0) {
+                const bestBid = ob.Bids[0].Price;
+                const bestAsk = ob.Asks[0].Price;
+                const midPrice = (bestBid + bestAsk) / 2;
+                const spread = bestAsk - bestBid;
+                spreadPriceEl.textContent = formatPrice(midPrice);
+                spreadInfoEl.textContent = '点差: ' + formatPrice(spread);
+            }
+        }
+
+        function updateStrategies(strategies) {
+            const list = document.getElementById('strategies-list');
+            if (!strategies || strategies.length === 0) {
+                list.innerHTML = '<div class="text-center py-4 text-slate-500">暂无策略</div>';
+                return;
+            }
+
+            let html = '';
+            strategies.forEach(strat => {
+                const statusClass = strat.running ? 'status-running' : 'status-stopped';
+                const statusText = strat.running ? '运行中' : '已停止';
+                const btnText = strat.running ? '停止' : '启动';
+                const btnClass = strat.running 
+                    ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30 border-red-500/50' 
+                    : 'bg-green-500/20 text-green-400 hover:bg-green-500/30 border-green-500/50';
+                
+                html += `
+                    <div class="flex items-center justify-between p-3 rounded-lg bg-slate-800/50 border border-slate-700">
+                        <div class="flex items-center gap-3">
+                            <span class="status-dot ${statusClass}"></span>
+                            <div>
+                                <div class="font-medium text-white">${strat.id}</div>
+                                <div class="text-xs text-slate-500">${strat.symbol} · ${statusText}</div>
+                            </div>
+                        </div>
+                        <button onclick="toggleStrategy('${strat.id}', ${strat.running})" 
+                                class="px-3 py-1.5 text-xs font-medium rounded border ${btnClass} transition-colors">
+                            ${btnText}
+                        </button>
+                    </div>
+                `;
+            });
+            list.innerHTML = html;
+        }
+
+        let tradesCache = [];
+
+        function updateTrades(trades) {
+            if (Array.isArray(trades)) {
+                tradesCache = trades;
+            } else if (trades && trades.ID) {
+                tradesCache.unshift(trades);
+                if (tradesCache.length > 50) {
+                    tradesCache = tradesCache.slice(0, 50);
+                }
+            }
+
+            const tbody = document.getElementById('trades-body');
+            if (tradesCache.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center py-8 text-slate-500">暂无成交</td></tr>';
+                return;
+            }
+
+            let html = '';
+            tradesCache.slice(0, 20).forEach(trade => {
+                const sideClass = trade.Side === 0 || trade.Side === 'BUY' ? 'text-green-400' : 'text-red-400';
+                const sideText = trade.Side === 0 || trade.Side === 'BUY' ? '买入' : '卖出';
+                html += `
+                    <tr class="border-b border-slate-700/50 hover:bg-slate-700/30">
+                        <td class="py-2 px-3 text-slate-400">${formatTime(trade.Timestamp)}</td>
+                        <td class="py-2 px-3 ${sideClass} font-medium">${sideText}</td>
+                        <td class="py-2 px-3 text-right font-mono">${formatPrice(trade.Price)}</td>
+                        <td class="py-2 px-3 text-right font-mono">${formatQty(trade.Quantity)}</td>
+                        <td class="py-2 px-3 text-right text-slate-500 font-mono">${formatQty(trade.Fee)}</td>
+                    </tr>
+                `;
+            });
+            tbody.innerHTML = html;
+        }
+
+        function updateRisk(data) {
+            const cbEl = document.getElementById('circuit-breaker');
+            if (data.circuitBroken) {
+                cbEl.textContent = '已触发';
+                cbEl.className = 'text-sm font-medium px-2 py-1 rounded bg-red-500/20 text-red-400';
+            } else {
+                cbEl.textContent = '正常';
+                cbEl.className = 'text-sm font-medium px-2 py-1 rounded bg-green-500/20 text-green-400';
+            }
+
+            const dailyPnlEl = document.getElementById('risk-daily-pnl');
+            dailyPnlEl.textContent = formatPnL(data.dailyPnL);
+            dailyPnlEl.className = 'text-sm font-medium ' + (data.dailyPnL >= 0 ? 'positive' : 'negative');
+
+            const pnlEl = document.getElementById('daily-pnl');
+            pnlEl.textContent = formatPnL(data.dailyPnL);
+            pnlEl.className = 'text-2xl font-bold ' + (data.dailyPnL >= 0 ? 'positive' : 'negative');
+
+            if (data.totalExposure !== undefined) {
+                document.getElementById('total-exposure').textContent = formatBTC(data.totalExposure);
+            }
+
+            const engineEl = document.getElementById('engine-status');
+            engineEl.textContent = '运行中';
+            engineEl.className = 'text-sm font-medium text-green-400';
+        }
+
+        function toggleStrategy(id, isRunning) {
+            const action = isRunning ? 'stop' : 'start';
+            fetch(`/api/strategies/${id}/${action}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(res => res.json())
+            .then(data => {
+                console.log('Strategy action:', data);
+            })
+            .catch(err => {
+                console.error('Strategy action error:', err);
+            });
+        }
+
+        connectWS();
+    </script>
+</body>
+</html>
